@@ -1,0 +1,36 @@
+[project]
+name = "auditpledge"
+version = "0.1.0"
+description = "Provenance and priced risk for the MCP tools a Compound-facing agent calls: reads an agent's tools over a real MCP session, verifies Ed25519 provenance, scores the supply-chain risk weighted for Compound position exposure, and prices the residual risk for a risk owner."
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.9,<2",        # the audited surface: MCP stdio client + server
+                          # (pinned: mcp 2.0 renamed the low-level Server decorators)
+    "cryptography>=42",   # Ed25519 provenance verification
+    "agent-core",         # doom2quake agent runtime, vendored at vendor/agent-core
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+# `agent-core` is not on PyPI, so a copy is vendored in this repository and
+# resolved from there. uv picks it up automatically; with plain pip, run
+# `pip install -e vendor/agent-core` first. Either way a clean checkout installs.
+[tool.uv.sources]
+agent-core = { path = "vendor/agent-core", editable = true }
+
+[project.scripts]
+auditpledge = "auditpledge.main:cli"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["auditpledge*"]
+
+[tool.setuptools.package-data]
+auditpledge = ["data/*.json", "ui/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

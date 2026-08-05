@@ -1,0 +1,31 @@
+[project]
+name = "agent-core"
+version = "0.1.0"
+description = "The shared control plane for agent products on Google ADK: named skills, a supervisor assembler, guardrails, a domain-aware action router, durable run state, and MCP helpers."
+requires-python = ">=3.10"
+dependencies = [
+    "google-adk>=1.0.0",
+    "google-genai>=0.3.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+# Durable state on Firestore (falls back to in-memory when absent).
+firestore = [
+    "google-cloud-firestore>=2.16.0",
+]
+# Serve/consume tools over the Model Context Protocol.
+mcp = [
+    "mcp>=1.5.0,<2.0.0",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agent_core*"]

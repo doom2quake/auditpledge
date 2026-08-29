@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use AuditPledge, please cite it as below."
+title: "AuditPledge: Provenance and Priced Risk for the MCP Tools a Compound Agent Calls"
+authors:
+  - family-names: Sarkar
+    given-names: Dipankar
+year: 2026
+license: MIT
+url: "https://github.com/doom2quake/auditpledge"
+repository-code: "https://github.com/doom2quake/auditpledge"
+abstract: >-
+  AuditPledge audits the Model Context Protocol tool supply chain of a
+  Compound-facing AI agent. It opens a real MCP session, verifies Ed25519
+  provenance for every tool against a committed public keyring, scores the
+  supply-chain risk weighted for what a Compound position exposes (state reads,
+  transaction building, collateral movement), and prices the residual risk into an
+  expected loss and a suggested premium so a risk owner can act on a dollar figure.
+  A counterfactual pass reruns the identical scorer over a mutated manifest so the
+  saving from a fix is measured, not asserted. Everything ambiguous fails closed.
+  A candidate entry to the Compound Grants Program, Security Tooling domain.
+  Testnet and seeded only.

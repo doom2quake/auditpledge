@@ -15,7 +15,7 @@ session, and its own audit is served back over MCP. A bundled synthetic Compound
 catalogue lets the whole audit run keyless and offline, labelled as synthetic wherever it
 surfaces.
 
-**[▶ Live demo](https://doom2quake.github.io/auditpledge/ui/)**  ·  **[Watch the walkthrough](https://youtu.be/AUDITPLEDGE_VIDEO)**  ·  **[Paper (PDF)](paper/paper.pdf)**  ·  **[Deck (PDF)](deck/deck.pdf)**  ·  Built for **[Compound](https://compound.finance/)** and the **[Compound Grants Program](https://www.comp.xyz/)**
+**[▶ Live demo](https://doom2quake.github.io/auditpledge/ui/)**  ·  **[Watch the walkthrough](https://youtu.be/fYE7ZF6Wuck)**  ·  **[Paper (PDF)](paper/paper.pdf)**  ·  **[Deck (PDF)](deck/deck.pdf)**  ·  Built for **[Compound](https://compound.finance/)** and the **[Compound Grants Program](https://www.comp.xyz/)**
 
 Read [docs/HONESTY.md](docs/HONESTY.md) first for the short version of what is real, what is
 simulated, and what is not built. Nothing on this page contradicts it.
@@ -170,7 +170,7 @@ The full milestone-mapped write-up is in [docs/PROPOSAL.md](docs/PROPOSAL.md).
   snapshot test fails if the page ever drifts from what the code produces.
 - **Walkthrough video:** [`docs/auditpledge-demo.mp4`](docs/auditpledge-demo.mp4), a
   narrated tour of the audit, the pricing, the counterfactual, and the grant roadmap (also on
-  [YouTube](https://youtu.be/AUDITPLEDGE_VIDEO)).
+  [YouTube](https://youtu.be/fYE7ZF6Wuck)).
 
 [![AuditPledge UI](docs/ui.png)](https://doom2quake.github.io/auditpledge/ui/)
 

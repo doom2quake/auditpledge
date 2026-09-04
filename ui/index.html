@@ -1,0 +1,778 @@
+<title>AuditPledge, price the Compound agent's tool risk</title>
+<style>
+  :root {
+    --bg: #0D1013; --panel: #14181C; --panel2: #1a1f24; --line: #262d33;
+    --text: #E6EAEE; --muted: #8A949C; --faint: #566069;
+    --steel: #6F9CC4; --green: #4FB286; --red: #FF5D5D; --amber: #E8B54A;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; } html, body { margin: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.5; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 900px; margin: 0 auto; padding: 40px 24px 64px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--steel); margin: 0 0 10px; }
+  h1 { font-size: clamp(30px,5vw,44px); line-height: 1.04; letter-spacing: -.02em; margin: 0; font-weight: 800; text-wrap: balance; }
+  .thesis { color: var(--muted); font-size: 17px; max-width: 62ch; margin: 14px 0 24px; }
+  .layout { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 780px){ .layout { grid-template-columns: 1.6fr 1fr; align-items: start; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .card h2 { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+
+  .tool { padding: 13px 16px; border-bottom: 1px solid var(--line); }
+  .tool:last-child { border-bottom: 0; }
+  .tool .top { display: flex; align-items: center; gap: 10px; }
+  .tool .nm { font-family: var(--mono); font-weight: 600; }
+  .tool .pub { font-family: var(--mono); font-size: 11px; color: var(--faint); flex: 1; }
+  .badge { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; padding: 3px 8px; border-radius: 5px; border: 1px solid var(--line); color: var(--faint); }
+  .badge.pending { opacity: .6; }
+  .badge.ok { color: var(--green); border-color: #285a45; background: rgba(79,178,134,.1); }
+  .badge.warn { color: var(--amber); border-color: #6a5423; }
+  .badge.crit { color: var(--red); border-color: #6a2a2a; background: rgba(255,93,93,.12); }
+  .tool.critical { background: rgba(255,93,93,.06); box-shadow: inset 3px 0 0 var(--red); }
+  .tool.critical.glow { animation: glow 1s 2; }
+  @keyframes glow { 50% { background: rgba(255,93,93,.16); } }
+  .findings { margin: 8px 0 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted); display: none; }
+  .tool.scanned .findings { display: block; }
+  .findings b { color: var(--red); }
+
+  .under { padding: 6px 0; }
+  .u { padding: 13px 16px; border-bottom: 1px solid var(--line); }
+  .u:last-child { border: 0; }
+  .u .k { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .u .v { font-family: var(--mono); font-size: 26px; font-variant-numeric: tabular-nums; font-weight: 700; margin-top: 4px; }
+  .u.loss .v { color: var(--red); } .u.prem .v { color: var(--amber); }
+  .u .sub { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-top: 2px; }
+
+  .run { margin-top: 22px; display: flex; gap: 12px; align-items: center; }
+  button.scan { font-family: var(--sans); font-weight: 700; font-size: 14px; background: var(--steel); color: #06181f; border: 0; border-radius: 9px; padding: 12px 22px; cursor: pointer; }
+  button.scan:hover { background: #8bb4d6; }
+  button:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+  .hint { color: var(--muted); font-size: 13px; }
+  footer { margin-top: 38px; color: var(--faint); font-size: 12px; font-family: var(--mono); }
+  @media (prefers-reduced-motion: reduce){ *{animation:none!important;transition:none!important} }
+
+  /* --- shared section spacing --- */
+  .section { margin-top: 22px; }
+  .section-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 12px; }
+  .section-head .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--steel); }
+  .section-head .sub { font-size: 12.5px; color: var(--muted); }
+
+  /* --- architecture diagram --- */
+  .arch { padding: 18px 16px 12px; }
+  .arch svg { width: 100%; height: auto; display: block; }
+  .arch .lg { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .arch .lg span { font-family: var(--mono); font-size: 10.5px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+  .arch .lg i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+  /* --- activity log --- */
+  .log { padding: 6px 0; max-height: 340px; overflow-y: auto; }
+  .step { display: grid; grid-template-columns: 22px 1fr auto; gap: 10px; align-items: start; padding: 9px 16px; border-bottom: 1px solid var(--line); opacity: .32; transition: opacity .25s ease; }
+  .step:last-child { border-bottom: 0; }
+  .step.on { opacity: 1; }
+  .step .rail { display: flex; flex-direction: column; align-items: center; }
+  .step .dot { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid var(--faint); margin-top: 2px; flex: none; position: relative; background: var(--panel); }
+  .step.on .dot { border-color: var(--steel); }
+  .step.done .dot { border-color: var(--green); background: var(--green); }
+  .step.done .dot::after { content: "✓"; position: absolute; inset: 0; font-size: 9px; line-height: 10px; text-align: center; color: #06181f; font-weight: 800; }
+  .step.crit .dot { border-color: var(--red); background: var(--red); }
+  .step.crit .dot::after { content: "!"; position: absolute; inset: 0; font-size: 9px; line-height: 10px; text-align: center; color: #1a0606; font-weight: 800; }
+  .step.busy .dot { animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(111,156,196,.18); } }
+  .step .k { font-family: var(--mono); font-size: 11px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+  .step .d { font-size: 12.5px; color: var(--text); margin-top: 2px; }
+  .step .d .tool { display: inline; padding: 0; border: 0; font-family: var(--mono); color: var(--steel); background: none; }
+  .step .tick { font-family: var(--mono); font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 1px; }
+  .step.done .tick { color: var(--green); }
+  .step.crit .tick { color: var(--red); }
+  .log-empty { padding: 16px; color: var(--faint); font-family: var(--mono); font-size: 12px; }
+
+  /* --- artifacts --- */
+  .arts { padding: 12px 16px 16px; display: grid; gap: 12px; }
+  .art { border: 1px solid var(--line); border-radius: 9px; background: var(--panel2); overflow: hidden; }
+  .art .ah { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
+  .art .ah .an { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  .art .ah .at { font-family: var(--mono); font-size: 10px; color: var(--faint); flex: 1; }
+  .art .actions { display: flex; gap: 7px; }
+  .abtn { font-family: var(--mono); font-size: 10.5px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer; }
+  .abtn:hover { color: var(--text); border-color: var(--faint); }
+  .abtn:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+  .abtn.copied { color: var(--green); border-color: #285a45; }
+  .art pre { margin: 0; padding: 12px 13px; font-family: var(--mono); font-size: 11.5px; line-height: 1.55; color: var(--muted); white-space: pre; overflow-x: auto; max-height: 260px; overflow-y: auto; }
+  .art pre b { color: var(--red); font-weight: 600; }
+  .art pre .g { color: var(--green); } .art pre .a { color: var(--amber); } .art pre .s { color: var(--steel); }
+  .art.locked { opacity: .5; }
+  .art.locked pre { color: var(--faint); }
+
+  /* --- help / legend --- */
+  .helpbtn { font-family: var(--mono); font-size: 13px; font-weight: 700; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--muted); cursor: pointer; }
+  .helpbtn:hover { color: var(--text); border-color: var(--faint); }
+  .helpbtn:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+  .replay { font-family: var(--mono); font-size: 12px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 8px; padding: 9px 14px; cursor: pointer; }
+  .replay:hover { color: var(--text); border-color: var(--faint); }
+  .replay:focus-visible { outline: 2px solid var(--steel); outline-offset: 2px; }
+  .help { border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); padding: 14px 16px; margin-top: 14px; }
+  .help[hidden] { display: none; }
+  .help h3 { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--steel); margin: 0 0 10px; }
+  .help dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; }
+  .help dt { font-family: var(--mono); font-size: 11px; color: var(--text); }
+  .help dd { margin: 0; font-size: 12.5px; color: var(--muted); }
+  .help .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+
+  /* --- evidence strip: where the numbers on this page came from --- */
+  .ev { margin-top: 14px; border: 1px solid var(--line); border-left: 3px solid var(--steel); border-radius: 9px; background: var(--panel2); padding: 12px 14px; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .ev b { color: var(--text); font-weight: 600; }
+  .ev .row { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+  .ev .row:first-child { margin-top: 0; }
+  .ev .tag { display: inline-block; border: 1px solid var(--line); border-radius: 5px; padding: 2px 7px; margin-right: 7px; color: var(--amber); }
+
+  /* --- counterfactual repricing --- */
+  .cf { padding: 6px 0; }
+  .cfv { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .cfv:last-child { border-bottom: 0; }
+  .cfv .lbl { font-size: 12.5px; color: var(--text); }
+  .cfv .nums { font-family: var(--mono); font-size: 13px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .cfv .nums .from { color: var(--faint); text-decoration: line-through; }
+  .cfv .nums .to { color: var(--green); font-weight: 700; }
+  .cfv .nums .dl { color: var(--green); }
+  .cf-empty { padding: 16px; color: var(--faint); font-family: var(--mono); font-size: 12px; }
+</style>
+<div class="wrap">
+  <p class="eyebrow">AuditPledge · MCP tool provenance for Compound agents</p>
+  <h1>A Compound agent is as trustworthy as the tools it can call.</h1>
+  <p class="thesis">AuditPledge inventories the MCP tools a Compound-facing agent can call, verifies their provenance and capability, and prices the residual risk in position terms. One unsigned, transaction-signing tool from an unknown publisher is one prompt injection away from moving your collateral. It names that tool, and puts a dollar figure on it.</p>
+
+  <div class="run" style="margin-top:0">
+    <button class="scan" id="scanBtn">Scan supply chain</button>
+    <button class="replay" id="replayBtn" title="Replay the audit from the top">Replay</button>
+    <button class="helpbtn" id="helpBtn" aria-expanded="false" aria-controls="helpPanel" title="What am I looking at?">?</button>
+    <span class="hint" id="hint"></span>
+  </div>
+
+  <div class="ev" id="evidence"></div>
+
+  <div class="help" id="helpPanel" hidden>
+    <h3>How to read this</h3>
+    <dl>
+      <dt><span class="swatch" style="background:var(--steel)"></span>Scan supply chain</dt><dd>Replays the recorded run step by step: each MCP tool is inventoried, risk-scored, then priced. No network, no key.</dd>
+      <dt><span class="swatch" style="background:var(--red)"></span>Critical (glows red)</dt><dd>Unsigned, RCE- or signer-capable, untrusted publisher. This is the named MCP-to-signer path into a Compound position.</dd>
+      <dt><span class="swatch" style="background:var(--amber)"></span>Underwriter</dt><dd>Expected annual loss and the loaded premium a risk owner, or their insurer, can act on.</dd>
+      <dt>Activity log</dt><dd>The audit trace as it was recorded: one line per stage, with the stage's own result and its measured wall-clock time.</dd>
+      <dt>Artifacts</dt><dd>audit-report is the exact stdout of the recorded run. underwriter-quote is derived from the same numbers. Copy or download either.</dd>
+      <dt>Replay</dt><dd>Resets and re-runs the demo. Keyboard: Tab to a control, Enter or Space to activate.</dd>
+    </dl>
+  </div>
+
+  <section class="section" aria-label="How it works">
+    <div class="section-head"><span class="lbl">How it works</span><span class="sub">MCP session, then provenance, then risk weighted for Compound exposure, then price, then reprice the fix. All deterministic.</span></div>
+    <div class="card">
+      <div class="arch">
+        <svg viewBox="0 0 900 200" role="img" aria-label="Pipeline: MCP manifest to tool inventory to supply-chain risk assessment. Risk splits into underwriter pricing and the critical worst tool, and both feed a ranked remediation plan.">
+          <defs>
+            <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#566069"/></marker>
+            <marker id="ahR" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#FF5D5D"/></marker>
+          </defs>
+          <!-- flow lines -->
+          <line x1="150" y1="92" x2="182" y2="92" stroke="#566069" marker-end="url(#ah)"/>
+          <line x1="326" y1="92" x2="358" y2="92" stroke="#566069" marker-end="url(#ah)"/>
+          <path d="M506 80 C 540 62, 560 46, 588 46" fill="none" stroke="#566069" marker-end="url(#ah)"/>
+          <path d="M506 104 C 540 122, 560 138, 588 138" fill="none" stroke="#FF5D5D" stroke-dasharray="4 3" marker-end="url(#ahR)"/>
+          <path d="M732 46 C 760 46, 770 78, 786 88" fill="none" stroke="#566069" marker-end="url(#ah)"/>
+          <path d="M732 138 C 760 138, 770 106, 786 96" fill="none" stroke="#566069" marker-end="url(#ah)"/>
+
+          <!-- MCP manifest -->
+          <g>
+            <rect x="18" y="70" width="132" height="44" rx="8" fill="#1a1f24" stroke="#262d33"/>
+            <rect x="32" y="84" width="12" height="16" rx="2" fill="none" stroke="#6F9CC4" stroke-width="1.5"/>
+            <line x1="35" y1="89" x2="41" y2="89" stroke="#6F9CC4" stroke-width="1.5"/><line x1="35" y1="93" x2="39" y2="93" stroke="#6F9CC4" stroke-width="1.5"/>
+            <text x="52" y="89" fill="#E6EAEE" font-family="ui-monospace,monospace" font-size="9.5" font-weight="600">MCP stdio session</text>
+            <text x="52" y="103" fill="#8A949C" font-family="ui-monospace,monospace" font-size="8">initialize + tools/list</text>
+          </g>
+          <!-- inventory -->
+          <g>
+            <rect x="182" y="70" width="144" height="44" rx="8" fill="#1a1f24" stroke="#262d33"/>
+            <circle cx="198" cy="92" r="7" fill="none" stroke="#6F9CC4" stroke-width="1.5"/><line x1="198" y1="88" x2="198" y2="92" stroke="#6F9CC4" stroke-width="1.5"/><line x1="198" y1="92" x2="201" y2="95" stroke="#6F9CC4" stroke-width="1.5"/>
+            <text x="212" y="89" fill="#E6EAEE" font-family="ui-monospace,monospace" font-size="10.5" font-weight="600">Tool inventory</text>
+            <text x="212" y="103" fill="#8A949C" font-family="ui-monospace,monospace" font-size="9">publisher · scope · ops</text>
+          </g>
+          <!-- risk assessment -->
+          <g>
+            <rect x="358" y="66" width="148" height="52" rx="8" fill="#14181C" stroke="#6F9CC4" stroke-width="1.3"/>
+            <path d="M374 92 l5 5 l9 -11" fill="none" stroke="#E8B54A" stroke-width="1.6"/>
+            <text x="394" y="88" fill="#E6EAEE" font-family="ui-monospace,monospace" font-size="10.5" font-weight="600">Risk assessment</text>
+            <text x="394" y="101" fill="#8A949C" font-family="ui-monospace,monospace" font-size="8">provenance·capability·position·vuln</text>
+          </g>
+          <!-- pricing -->
+          <g>
+            <rect x="588" y="24" width="144" height="44" rx="8" fill="#1a1f24" stroke="#262d33"/>
+            <text x="604" y="52" fill="#E8B54A" font-family="ui-monospace,monospace" font-size="14" font-weight="700">$</text>
+            <text x="620" y="43" fill="#E6EAEE" font-family="ui-monospace,monospace" font-size="10.5" font-weight="600">Underwriter price</text>
+            <text x="620" y="57" fill="#8A949C" font-family="ui-monospace,monospace" font-size="9">p(compromise) × loss</text>
+          </g>
+          <!-- worst tool critical -->
+          <g>
+            <rect x="588" y="116" width="144" height="44" rx="8" fill="rgba(255,93,93,.08)" stroke="#6a2a2a"/>
+            <path d="M606 148 l6 -12 l6 12 z" fill="none" stroke="#FF5D5D" stroke-width="1.5"/><line x1="612" y1="140" x2="612" y2="145" stroke="#FF5D5D" stroke-width="1.5"/>
+            <text x="626" y="137" fill="#FF5D5D" font-family="ui-monospace,monospace" font-size="10.5" font-weight="600">Worst tool</text>
+            <text x="626" y="151" fill="#8A949C" font-family="ui-monospace,monospace" font-size="9">unsigned signer · critical</text>
+          </g>
+          <!-- remediation -->
+          <g>
+            <rect x="786" y="70" width="98" height="44" rx="8" fill="#1a1f24" stroke="#262d33"/>
+            <text x="800" y="89" fill="#E6EAEE" font-family="ui-monospace,monospace" font-size="10.5" font-weight="600">Remediation</text>
+            <text x="800" y="103" fill="#8A949C" font-family="ui-monospace,monospace" font-size="8.5">agent layer</text>
+          </g>
+        </svg>
+        <div class="lg">
+          <span><i style="background:#262d33;border:1px solid #566069"></i>deterministic tool</span>
+          <span><i style="background:#14181C;border:1px solid #6F9CC4"></i>agent decision</span>
+          <span><i style="background:rgba(255,93,93,.5);border:1px solid #6a2a2a"></i>critical path (unsigned signer)</span>
+          <span><i style="background:#E8B54A"></i>priced output</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="layout">
+    <div class="card">
+      <h2 id="toolsHead">MCP server</h2>
+      <div id="tools"></div>
+    </div>
+    <div class="card">
+      <h2>Underwriter</h2>
+      <div class="under">
+        <div class="u loss"><div class="k">Expected annual loss</div><div class="v" id="loss">$0</div><div class="sub">Σ p(compromise) × breach loss</div></div>
+        <div class="u prem"><div class="k">Suggested premium</div><div class="v" id="prem">$0</div><div class="sub" id="premSub">expected loss × risk load</div></div>
+      </div>
+    </div>
+  </div>
+
+  <section class="section" aria-label="Counterfactual repricing">
+    <div class="section-head"><span class="lbl">Counterfactual repricing</span><span class="sub">The same scorer, rerun on a mutated manifest. The saving is measured, not asserted.</span></div>
+    <div class="card"><div class="cf" id="cf"><div class="cf-empty">Locked. Run the scan to reprice the worst tool.</div></div></div>
+  </section>
+
+  <div class="layout section">
+    <section class="card" aria-label="Live agent activity log">
+      <h2>Agent activity log</h2>
+      <div class="log" id="log"><div class="log-empty" id="logEmpty">Idle. Run the scan to trace the agent's audit, tool calls, and guardrail checks.</div></div>
+    </section>
+    <section class="card" aria-label="Exportable artifacts">
+      <h2>Artifacts</h2>
+      <div class="arts" id="arts"></div>
+    </section>
+  </div>
+
+  <footer>Static offline page. It replays one recorded run of the real auditor; it does not execute Python in your browser. All Web3 interaction is testnet only. Probabilities and the breach-loss figure are illustrative priors, not actuarial estimates (see HONESTY.md). Built on doom2quake agent-core.</footer>
+</div>
+<script>
+(function () {
+/* --- BEGIN SNAPSHOT (generated by: python -m auditpledge.ui_data --write) --- */
+var SNAPSHOT = {
+  "advisory_source": "offline-snapshot (simulated)",
+  "captured_at": "2026-09-04T13:00:09+00:00",
+  "cli_text": "MCP server: compound-position-agent  (4 tools)\n  evidence: mcp/stdio via /Volumes/Github/ds-hackathon/projects/compound-grants/app/.venv/bin/python3 -m auditpledge.mcp_server --server compound-position-agent\n            identity=auditpledge-mcp/compound-position-agent  calls=['initialize', 'tools/list']  retrieved=2026-09-04T13:00:09+00:00\n  advisory source: offline-snapshot (simulated)  (simulated advisories counted: True)\n  critical=2  high=0  unsigned-RCE=2  position-exposed=2  forged-signatures=0\n\nPer-tool findings:\n  comet-state-reader   [low     ] score=1   signed=yes publisher=compound-finance\n      - network ops: ['rpc.call']\n  collateral-mover     [critical] score=20  signed=NO  publisher=defi-rando\n      - RCE-capable ops: ['run_command', 'os.system', 'sign_tx']\n      - Compound position exposure: ops ['sign_tx']\n      - unsigned (no detached signature)\n      - untrusted publisher 'defi-rando' (identity unproven)\n      - over-broad scopes: ['*']\n      - known vuln [SIMULATED] GHSA-2c9q-w5x7-6h3j: arbitrary command execution by design (no sandbox) (retrieved 2026-08-01T00:00:00+00:00)\n  tx-builder           [critical] score=21  signed=NO  publisher=txkit\n      - RCE-capable ops: ['sign_tx', 'write_file']\n      - network ops: ['http.request']\n      - Compound position exposure: ops ['sign_tx'] scopes ['build:tx', 'sign:tx']\n      - unsigned (no detached signature)\n      - untrusted publisher 'txkit' (identity unproven)\n      - over-broad scopes: ['build:tx', 'sign:tx', 'net:any', 'read:env']\n      - known vuln [SIMULATED] CVE-2026-31337: SSRF via unchecked redirect while fetching gas oracles (retrieved 2026-08-01T00:00:00+00:00)\n  rate-oracle          [low     ] score=1   signed=yes publisher=openzeppelin\n      - network ops: ['rpc.call']\n\n  worst tool: tx-builder [critical] score=21\n\nUnderwriter pricing (breach loss assumption $500,000, risk load 1.4x):\n  expected loss: $305,000   suggested annual premium: $427,000\n    - collateral-mover: p(compromise)=0.3  expected loss $150,000\n    - tx-builder: p(compromise)=0.3  expected loss $150,000\n\nCounterfactual repricing for 'tx-builder' (same scorer rerun on a mutated manifest):\n    - drop tx-builder from the agent's toolset\n        premium $427,000 -> $217,000   (-210,000 USD)\n    - re-publish tx-builder signed by a trusted publisher, with RCE/signing ops and wildcard scopes removed\n        premium $427,000 -> $392,000   (-35,000 USD)\n\n[remediation] skipped (--no-llm)\n\n-- run=run-20260904T130008-9bcd1a status=complete state=in-memory (durable state unavailable)",
+  "command": "auditpledge audit --server compound-position-agent --source mcp --no-llm",
+  "counterfactual": {
+    "baseline": {
+      "expected_loss_usd": 305000,
+      "suggested_annual_premium_usd": 427000
+    },
+    "tool": "tx-builder",
+    "variants": [
+      {
+        "action": "drop",
+        "delta_expected_loss_usd": -150000,
+        "delta_premium_usd": -210000,
+        "expected_loss_usd": 155000,
+        "label": "drop tx-builder from the agent's toolset",
+        "suggested_annual_premium_usd": 217000
+      },
+      {
+        "action": "sign_and_sandbox",
+        "delta_expected_loss_usd": -25000,
+        "delta_premium_usd": -35000,
+        "expected_loss_usd": 280000,
+        "label": "re-publish tx-builder signed by a trusted publisher, with RCE/signing ops and wildcard scopes removed",
+        "suggested_annual_premium_usd": 392000
+      }
+    ]
+  },
+  "counts": {
+    "critical": 2,
+    "forged_signatures": 0,
+    "high": 0,
+    "position_exposed": 2,
+    "total": 4,
+    "unsigned_rce": 2
+  },
+  "evidence": {
+    "protocol_calls": [
+      "initialize",
+      "tools/list"
+    ],
+    "retrieved_at": "2026-09-04T13:00:09+00:00",
+    "server_identity": "auditpledge-mcp/compound-position-agent",
+    "source": "mcp/stdio",
+    "tools_listed": 4,
+    "transport": "/Volumes/Github/ds-hackathon/projects/compound-grants/app/.venv/bin/python3 -m auditpledge.mcp_server --server compound-position-agent"
+  },
+  "pricing": {
+    "breach_loss_assumption_usd": 500000,
+    "expected_loss_usd": 305000,
+    "per_tool": [
+      {
+        "expected_loss_usd": 2500,
+        "p_compromise": 0.005,
+        "p_driver": "severity band",
+        "severity": "low",
+        "tool": "comet-state-reader"
+      },
+      {
+        "expected_loss_usd": 150000,
+        "p_compromise": 0.3,
+        "p_driver": "unsigned RCE floor",
+        "severity": "critical",
+        "tool": "collateral-mover"
+      },
+      {
+        "expected_loss_usd": 150000,
+        "p_compromise": 0.3,
+        "p_driver": "unsigned RCE floor",
+        "severity": "critical",
+        "tool": "tx-builder"
+      },
+      {
+        "expected_loss_usd": 2500,
+        "p_compromise": 0.005,
+        "p_driver": "severity band",
+        "severity": "low",
+        "tool": "rate-oracle"
+      }
+    ],
+    "risk_load": 1.4,
+    "suggested_annual_premium_usd": 427000,
+    "top_drivers": [
+      {
+        "expected_loss_usd": 150000,
+        "p_compromise": 0.3,
+        "p_driver": "unsigned RCE floor",
+        "severity": "critical",
+        "tool": "collateral-mover"
+      },
+      {
+        "expected_loss_usd": 150000,
+        "p_compromise": 0.3,
+        "p_driver": "unsigned RCE floor",
+        "severity": "critical",
+        "tool": "tx-builder"
+      }
+    ]
+  },
+  "server": "compound-position-agent",
+  "simulated_advisories_counted": true,
+  "synthetic_catalogue": false,
+  "tools": [
+    {
+      "expected_loss_usd": 2500,
+      "findings": [
+        "network ops: ['rpc.call']"
+      ],
+      "name": "comet-state-reader",
+      "p_compromise": 0.005,
+      "p_driver": "severity band",
+      "position_exposed": false,
+      "publisher": "compound-finance",
+      "rce_capable": false,
+      "score": 1,
+      "severity": "low",
+      "signed": true,
+      "trusted": true
+    },
+    {
+      "expected_loss_usd": 150000,
+      "findings": [
+        "RCE-capable ops: ['run_command', 'os.system', 'sign_tx']",
+        "Compound position exposure: ops ['sign_tx']",
+        "unsigned (no detached signature)",
+        "untrusted publisher 'defi-rando' (identity unproven)",
+        "over-broad scopes: ['*']",
+        "known vuln [SIMULATED] GHSA-2c9q-w5x7-6h3j: arbitrary command execution by design (no sandbox) (retrieved 2026-08-01T00:00:00+00:00)"
+      ],
+      "name": "collateral-mover",
+      "p_compromise": 0.3,
+      "p_driver": "unsigned RCE floor",
+      "position_exposed": true,
+      "publisher": "defi-rando",
+      "rce_capable": true,
+      "score": 20,
+      "severity": "critical",
+      "signed": false,
+      "trusted": false
+    },
+    {
+      "expected_loss_usd": 150000,
+      "findings": [
+        "RCE-capable ops: ['sign_tx', 'write_file']",
+        "network ops: ['http.request']",
+        "Compound position exposure: ops ['sign_tx'] scopes ['build:tx', 'sign:tx']",
+        "unsigned (no detached signature)",
+        "untrusted publisher 'txkit' (identity unproven)",
+        "over-broad scopes: ['build:tx', 'sign:tx', 'net:any', 'read:env']",
+        "known vuln [SIMULATED] CVE-2026-31337: SSRF via unchecked redirect while fetching gas oracles (retrieved 2026-08-01T00:00:00+00:00)"
+      ],
+      "name": "tx-builder",
+      "p_compromise": 0.3,
+      "p_driver": "unsigned RCE floor",
+      "position_exposed": true,
+      "publisher": "txkit",
+      "rce_capable": true,
+      "score": 21,
+      "severity": "critical",
+      "signed": false,
+      "trusted": false
+    },
+    {
+      "expected_loss_usd": 2500,
+      "findings": [
+        "network ops: ['rpc.call']"
+      ],
+      "name": "rate-oracle",
+      "p_compromise": 0.005,
+      "p_driver": "severity band",
+      "position_exposed": false,
+      "publisher": "openzeppelin",
+      "rce_capable": false,
+      "score": 1,
+      "severity": "low",
+      "signed": true,
+      "trusted": true
+    }
+  ],
+  "trace": [
+    {
+      "detail": "/Volumes/Github/ds-hackathon/projects/compound-grants/app/.venv/bin/python3 -m auditpledge.mcp_server --server compound-position-agent -> identity auditpledge-mcp/compound-position-agent",
+      "key": "load_manifest",
+      "ms": 1127.76,
+      "status": "ok",
+      "tick": "4 tools"
+    },
+    {
+      "detail": "Inventory publisher, version, scopes and ops per tool.",
+      "key": "inventory_tools",
+      "ms": 0.01,
+      "status": "ok",
+      "tick": "4 tools"
+    },
+    {
+      "detail": "Verify each detached Ed25519 signature over the tool's canonical bytes.",
+      "key": "verify_provenance",
+      "ms": 0.54,
+      "status": "crit",
+      "tick": "2/4 verified"
+    },
+    {
+      "detail": "Score capability, scope, provenance, Compound exposure and advisories.",
+      "key": "assess_supply_chain",
+      "ms": 0.51,
+      "status": "crit",
+      "tick": "worst: tx-builder"
+    },
+    {
+      "detail": "Price the residual risk: p(compromise) x breach loss.",
+      "key": "price_audit",
+      "ms": 0.01,
+      "status": "ok",
+      "tick": "$305,000 loss"
+    },
+    {
+      "detail": "Reprice the manifest with 'tx-builder' fixed.",
+      "key": "counterfactual",
+      "ms": 1.86,
+      "status": "ok",
+      "tick": "premium -$210,000"
+    }
+  ],
+  "worst": "tx-builder"
+};
+/* --- END SNAPSHOT --- */
+
+  var S = SNAPSHOT;
+  var $ = function (id) { return document.getElementById(id); };
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var SEV = { critical: "crit", high: "crit", medium: "warn", low: "ok" };
+
+  function esc(s) {
+    return String(s === null || s === undefined ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function usd(n) { return "$" + Math.round(n).toLocaleString("en-US"); }
+  function pad(s, n) { s = String(s); while (s.length < n) s += " "; return s; }
+
+  // ---- provenance of the page itself ------------------------------------
+  var ev = S.evidence || {};
+  $("evidence").innerHTML =
+    '<span class="row"><span class="tag">recorded run</span>Every number on this page is captured from one real execution of ' +
+      '<b>' + esc(S.command) + '</b>. Nothing here is typed in by hand; re-capture with ' +
+      '<b>python -m auditpledge.ui_data --write</b>, and <b>tests/test_ui_snapshot.py</b> fails if the page drifts from the code.</span>' +
+    '<span class="row">evidence: <b>' + esc(ev.source) + '</b> &middot; server identity <b>' + esc(ev.server_identity) +
+      '</b> &middot; protocol calls <b>' + esc((ev.protocol_calls || []).join(", ") || "none") +
+      '</b> &middot; ' + esc(ev.tools_listed) + ' tools listed &middot; captured ' + esc(S.captured_at) + '</span>' +
+    '<span class="row">' +
+      (S.synthetic_catalogue
+        ? 'the audited server is a <b>synthetic demo catalogue</b> shipped in this repo, served over a real MCP stdio session. '
+        : '') +
+      'advisory feed: <b>' + esc(S.advisory_source) + '</b>' +
+      (S.simulated_advisories_counted ? ' (simulated entries counted, and labelled [SIMULATED])' : '') +
+      '.</span>';
+
+  $("toolsHead").textContent = "MCP server · " + S.server;
+  var HINT_IDLE = S.tools.length + " tools listed over MCP. Watch the unsigned signer-capable one light up.";
+  var HINT_DONE = S.counts.critical + " critical, " + S.counts.unsigned_rce +
+    " unsigned RCE, " + S.counts.position_exposed + " exposed to the position. " +
+    S.worst + " drives the premium: sign it, sandbox it, or drop it.";
+  $("hint").textContent = HINT_IDLE;
+  $("premSub").textContent = "expected loss × " + S.pricing.risk_load + " risk load";
+
+  // ---- tools -------------------------------------------------------------
+  var tc = $("tools");
+  S.tools.forEach(function (t, i) {
+    var cls = SEV[t.severity] || "warn";
+    var el = document.createElement("div");
+    el.className = "tool" + (cls === "crit" ? " critical" : "");
+    el.id = "tool" + i;
+    var findings = (t.findings || []).map(function (f) {
+      return cls === "crit" ? "<b>" + esc(f) + "</b>" : esc(f);
+    }).join("<br>");
+    el.innerHTML = '<div class="top"><span class="nm">' + esc(t.name) + '</span><span class="pub">' +
+      esc(t.publisher) + '</span><span class="badge pending" id="b' + i + '">scanning…</span></div>' +
+      '<div class="findings">' + (findings || esc("no findings")) +
+      '<br>score ' + esc(t.score) + ' · p(compromise) ' + esc(t.p_compromise) +
+      ' (' + esc(t.p_driver) + ') · expected loss ' + usd(t.expected_loss_usd) + '</div>';
+    tc.appendChild(el);
+  });
+  function badgeText(t) {
+    return (t.signed ? "signed" : "UNSIGNED") + " · " + t.severity +
+      (t.position_exposed ? " · position" : t.rce_capable ? " · RCE" : "");
+  }
+
+  function money(el, to) {
+    if (reduce) { el.textContent = usd(to); return; }
+    var n = 0, step = Math.max(500, Math.round(to / 24));
+    var t = setInterval(function () {
+      n += step; if (n >= to) { n = to; clearInterval(t); }
+      el.textContent = usd(n);
+    }, 22);
+  }
+
+  // ---- activity log: the recorded trace of that run ----------------------
+  var STEPS = (S.trace || []).map(function (s) {
+    return { k: s.key, d: esc(s.detail), out: s.status === "crit" ? "crit" : "done",
+             tick: s.tick || (s.ms + " ms"), ms: s.ms };
+  });
+  var logEl = $("log");
+  var logTimers = [];
+  function clearLog() {
+    logTimers.forEach(clearTimeout); logTimers = [];
+    logEl.innerHTML = '<div class="log-empty">Idle. Run the scan to replay the recorded audit trace.</div>';
+  }
+  function buildLog() {
+    logEl.innerHTML = "";
+    STEPS.forEach(function (s, i) {
+      var el = document.createElement("div"); el.className = "step"; el.id = "step" + i;
+      el.innerHTML = '<div class="rail"><span class="dot"></span></div>' +
+        '<div><div class="k">' + esc(s.k) + '</div><div class="d">' + s.d + '</div></div>' +
+        '<div class="tick" id="tick' + i + '"></div>';
+      logEl.appendChild(el);
+    });
+  }
+  function playLog() {
+    buildLog();
+    var base = reduce ? 0 : 380, gap = reduce ? 0 : 300;
+    STEPS.forEach(function (s, i) {
+      logTimers.push(setTimeout(function () {
+        var el = $("step" + i); if (!el) return;
+        el.classList.add("on", "busy");
+        logTimers.push(setTimeout(function () {
+          el.classList.remove("busy");
+          el.classList.add(s.out === "crit" ? "crit" : "done");
+          var tk = $("tick" + i);
+          if (tk) tk.textContent = s.tick + " · " + (s.ms < 0.01 ? "<0.01" : s.ms) + " ms";
+          // Scroll the log pane only. scrollIntoView would drag the whole page.
+          if (!reduce) logEl.scrollTop = Math.max(0, el.offsetTop - logEl.offsetTop - 120);
+        }, reduce ? 0 : 150));
+      }, reduce ? 0 : base + i * gap));
+    });
+  }
+
+  // ---- counterfactual repricing -----------------------------------------
+  var cfEl = $("cf");
+  function clearCf() {
+    cfEl.innerHTML = '<div class="cf-empty">Locked. Run the scan to reprice the worst tool.</div>';
+  }
+  function showCf() {
+    var cf = S.counterfactual;
+    if (!cf || !cf.variants || !cf.variants.length) { clearCf(); return; }
+    cfEl.innerHTML = cf.variants.map(function (v) {
+      return '<div class="cfv"><div class="lbl">' + esc(v.label) + '</div>' +
+        '<div class="nums">premium <span class="from">' + usd(cf.baseline.suggested_annual_premium_usd) +
+        '</span> &rarr; <span class="to">' + usd(v.suggested_annual_premium_usd) + '</span>' +
+        '  <span class="dl">(' + (v.delta_premium_usd > 0 ? "+" : "−") +
+        usd(Math.abs(v.delta_premium_usd)).slice(1) + ')</span>' +
+        '  <span style="color:var(--faint)">expected loss ' + usd(cf.baseline.expected_loss_usd) +
+        ' &rarr; ' + usd(v.expected_loss_usd) + '</span></div></div>';
+    }).join("");
+  }
+
+  // ---- artifacts: the CLI output, and a quote derived from the same data --
+  function quoteText() {
+    var p = S.pricing, cf = S.counterfactual, L = [];
+    var rule = new Array(61).join("-");
+    L.push("AuditPledge underwriter quote  ·  " + S.server);
+    L.push("captured: " + S.captured_at);
+    L.push("command:  " + S.command);
+    L.push("breach-loss assumption: " + usd(p.breach_loss_assumption_usd));
+    L.push(rule);
+    L.push("expected annual loss:      " + usd(p.expected_loss_usd));
+    L.push("suggested annual premium:  " + usd(p.suggested_annual_premium_usd) +
+           "   (expected loss x " + p.risk_load + " risk load)");
+    L.push("");
+    L.push("per tool (expected loss = p(compromise) x breach loss)");
+    p.per_tool.forEach(function (d) {
+      L.push("  " + pad(d.tool, 20) + " p=" + d.p_compromise.toFixed(3) + "   " +
+             pad(usd(d.expected_loss_usd), 9) + " " + pad(d.severity, 9) + " " + d.p_driver);
+    });
+    if (cf && cf.variants && cf.variants.length) {
+      L.push("");
+      L.push("counterfactual repricing for '" + cf.tool + "' (same scorer, mutated manifest)");
+      cf.variants.forEach(function (v) {
+        L.push("  " + v.label);
+        L.push("      premium " + usd(cf.baseline.suggested_annual_premium_usd) + " -> " +
+               usd(v.suggested_annual_premium_usd) +
+               "   (" + (v.delta_premium_usd > 0 ? "+" : "-") +
+               usd(Math.abs(v.delta_premium_usd)).slice(1) + ")");
+      });
+    }
+    L.push("");
+    L.push("Probabilities and the breach-loss figure are illustrative priors, not");
+    L.push("actuarial estimates. See HONESTY.md.");
+    return L.join("\n");
+  }
+
+  function colourise(text) {
+    return esc(text)
+      .replace(/\[critical\]/g, '<b>[critical]</b>')
+      .replace(/\[low     \]/g, '<span class="g">[low     ]</span>')
+      .replace(/signed=NO/g, '<b>signed=NO</b>')
+      .replace(/\[SIMULATED\]/g, '<span class="a">[SIMULATED]</span>');
+  }
+
+  var ARTS = [
+    { id: "report", nm: "audit-report", type: "text · stdout of the run",
+      file: "auditpledge-audit.txt", txt: S.cli_text },
+    { id: "quote", nm: "underwriter-quote", type: "text · pricing",
+      file: "auditpledge-quote.txt", txt: quoteText() }
+  ];
+  var artsEl = $("arts");
+  function download(name, text) {
+    var blob = new Blob([text], { type: "text/plain" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a"); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea"); ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { document.execCommand("copy"); } catch (e) {} ta.remove();
+  }
+  function copy(text, btn) {
+    var done = function () {
+      btn.textContent = "copied"; btn.classList.add("copied");
+      setTimeout(function () { btn.textContent = "copy"; btn.classList.remove("copied"); }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text); done(); });
+    } else { fallbackCopy(text); done(); }
+  }
+  function buildArts() {
+    artsEl.innerHTML = "";
+    ARTS.forEach(function (a) {
+      var el = document.createElement("div"); el.className = "art locked"; el.id = "art-" + a.id;
+      el.innerHTML = '<div class="ah"><span class="an">' + a.nm + '</span><span class="at">' + a.type + '</span>' +
+        '<span class="actions"><button class="abtn" data-act="copy" data-id="' + a.id + '" disabled>copy</button>' +
+        '<button class="abtn" data-act="dl" data-id="' + a.id + '" disabled>download</button></span></div>' +
+        '<pre id="pre-' + a.id + '">Locked. Run the scan to generate this artifact.</pre>';
+      artsEl.appendChild(el);
+    });
+  }
+  function unlockArts() {
+    ARTS.forEach(function (a) {
+      var el = $("art-" + a.id); el.classList.remove("locked");
+      $("pre-" + a.id).innerHTML = colourise(a.txt);
+      el.querySelectorAll(".abtn").forEach(function (b) { b.disabled = false; });
+    });
+  }
+  artsEl.addEventListener("click", function (e) {
+    var b = e.target.closest(".abtn"); if (!b || b.disabled) return;
+    var a = ARTS.filter(function (x) { return x.id === b.getAttribute("data-id"); })[0];
+    if (!a) return;
+    if (b.getAttribute("data-act") === "copy") copy(a.txt, b);
+    else download(a.file, a.txt);
+  });
+  buildArts();
+
+  // ---- help toggle -------------------------------------------------------
+  var helpBtn = $("helpBtn"), helpPanel = $("helpPanel");
+  helpBtn.addEventListener("click", function () {
+    var open = helpPanel.hasAttribute("hidden");
+    if (open) { helpPanel.removeAttribute("hidden"); helpBtn.setAttribute("aria-expanded", "true"); }
+    else { helpPanel.setAttribute("hidden", ""); helpBtn.setAttribute("aria-expanded", "false"); }
+  });
+
+  // ---- run orchestration -------------------------------------------------
+  function resetTools() {
+    S.tools.forEach(function (t, i) {
+      var el = $("tool" + i); el.classList.remove("scanned", "glow");
+      var b = $("b" + i); b.className = "badge pending"; b.textContent = "scanning…";
+    });
+    $("loss").textContent = "$0"; $("prem").textContent = "$0";
+  }
+  var runTimers = [];
+  function runScan() {
+    runTimers.forEach(clearTimeout); runTimers = [];
+    resetTools(); buildArts(); clearCf();
+    $("hint").textContent = HINT_IDLE;
+    playLog();
+    var loss = 0;
+    S.tools.forEach(function (t, i) {
+      runTimers.push(setTimeout(function () {
+        var el = $("tool" + i), b = $("b" + i);
+        el.classList.add("scanned");
+        b.className = "badge " + (SEV[t.severity] || "warn");
+        b.textContent = badgeText(t);
+        if ((SEV[t.severity] || "") === "crit") el.classList.add("glow");
+        loss += t.expected_loss_usd;
+        var isLast = i === S.tools.length - 1;
+        money($("loss"), isLast ? S.pricing.expected_loss_usd : loss);
+        money($("prem"), isLast ? S.pricing.suggested_annual_premium_usd
+                                : Math.round(loss * S.pricing.risk_load));
+        if (isLast) $("hint").textContent = HINT_DONE;
+      }, 350 + i * 520));
+    });
+    var doneAt = reduce ? 0 : 380 + STEPS.length * 300 + 200;
+    runTimers.push(setTimeout(function () { unlockArts(); showCf(); }, doneAt));
+  }
+  function resetAll() {
+    runTimers.forEach(clearTimeout); runTimers = [];
+    clearLog(); buildArts(); resetTools(); clearCf();
+    $("hint").textContent = HINT_IDLE;
+  }
+  $("scanBtn").addEventListener("click", runScan);
+  $("replayBtn").addEventListener("click", function () { resetAll(); runScan(); });
+
+  // Auto-run once so a screenshot or a first-time visitor sees the finished
+  // audit rather than an empty shell.
+  runScan();
+})();
+</script>

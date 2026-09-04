@@ -1,0 +1,196 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false
+}
+
+\title{AuditPledge: Provenance and Priced Risk for the MCP Tools\\ a Compound-Facing Agent Calls}
+\author{Dipankar Sarkar \\ \small doom2quake}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+An AI agent that manages a Compound position is only as trustworthy as the weakest tool in
+its toolbelt. Agents increasingly acquire those tools over the Model Context Protocol (MCP),
+and one unsigned, remote-code-capable, over-scoped tool can read a signing key, rewrite a
+transaction before it is broadcast, or move collateral. The operator wiring such an agent has
+no standard way to answer which of the tools it can call are dangerous, how dangerous, and in
+money. We present AuditPledge, a supply-chain auditor that opens a real MCP session against an
+agent's tool servers, verifies Ed25519 provenance for every tool against a committed public
+keyring, scores the risk weighted for what a Compound position exposes (state reads,
+transaction building, collateral movement), and prices the residual risk into an expected loss
+and a suggested premium. A counterfactual pass reruns the identical scorer over a mutated
+manifest, so the dollar saving from a fix is measured, not asserted. Everything ambiguous fails
+closed: unknown servers, identity mismatches, forged or missing signatures never read as clean.
+The audit, the cryptography, the scoring and pricing, and the UI numbers are real; the demo
+tool catalogue, the offline advisory snapshot, and the demo publisher keys are synthetic and
+labelled as such. The deterministic core is verified by 75 Python tests, needs no network, key,
+or cloud credentials, and all Web3 interaction is testnet and seeded only. This is a candidate
+entry to the Compound Grants Program, Security Tooling domain (Section~\ref{sec:limits}).
+\end{abstract}
+
+\section{Problem}
+DeFi is being wired up to AI agents: position managers, liquidation bots, rebalancers, and
+treasury assistants increasingly run as agents that call external tools over
+MCP~\cite{mcp}. MCP has become the default way an agent acquires tools, ahead of any security
+convention for it. A tool manifest is attacker-controlled data. A tool that merely
+\emph{claims} a publisher and \emph{claims} a signature proves nothing, yet an operator today
+reads a list of tool names, trusts the publisher on faith, and finds out something was wrong
+only after funds move.
+
+Software supply-chain attacks --- typosquatted packages, compromised maintainers, lookalike
+publishers --- are already a dominant way real systems get breached~\cite{osv}. The MCP tool
+layer imports every one of those failure modes and adds a live wire to a wallet. The failure
+sharpens under a Compound-facing agent, because the tools that matter are exactly the ones
+that sit in front of the money: readers that pull Comet~\cite{comet} market and account state,
+builders that assemble and sign COMP-related transactions, and movers that supply or withdraw
+collateral. The concrete gap is the absence of three things at once: a provenance check on the
+tool supply chain, a severity ranking weighted for Compound exposure, and a dollar figure a
+risk owner or an insurer could act on.
+
+\section{Why Compound}
+Compound is a mature lending protocol with real value at stake and an active, security-minded
+governance process~\cite{compgov} whose Grants Program names Security Tooling as a funded
+domain. A security tool is not a one-shot deliverable; it is an artifact the ecosystem keeps
+using, which is the shape milestone funding supports. AuditPledge is not a chain-agnostic tool
+with a Compound label: its risk model weights capability against what a Compound position
+actually exposes, and its reference keyring is seeded from publishers the Compound community can
+vet. A provenance-and-pricing standard proven against Compound-facing agents is a public good
+the whole ecosystem inherits, and the moment to set the norm --- that a tool a Compound agent
+calls carries verifiable provenance --- is before an incident sets it the hard way.
+
+\section{Design}
+AuditPledge is a pipeline of pure functions over an MCP tool manifest and a committed keyring,
+so a reviewer can trace every number. The stages are: inventory, provenance verification, risk
+scoring, underwriter pricing, and counterfactual repricing.
+
+\subsection{The evidence path: a real MCP session}
+With \texttt{--source mcp}, AuditPledge opens an MCP stdio session, completes the
+\texttt{initialize} handshake, checks the server identity it was handed against the server it
+asked for, and reads \texttt{tools/list} over JSON-RPC. Unknown servers, identity mismatches,
+and unreachable servers all \textbf{fail closed}: the audit stops rather than reporting a clean
+manifest. A bundled synthetic Compound tool catalogue is read the same way over the same
+session, and is labelled \texttt{synthetic: true} everywhere it surfaces.
+
+\subsection{Provenance: Ed25519 over canonical bytes}
+Each tool carries a detached Ed25519~\cite{ed25519} signature over the canonical bytes of a
+fixed field set:
+\[
+\text{signed} = (\text{name},\ \text{version},\ \text{publisher},\ \text{sorted scopes},\ \text{sorted ops}).
+\]
+The verifier recovers nothing from self-assertion. It normalises the publisher and matches it
+\emph{exactly} against the keyring --- \texttt{attacker.compound-finance} is not
+\texttt{compound-finance}, because suffix matching is never used --- and then verifies the
+signature over the canonical bytes with that publisher's committed public key. Only a signature
+that verifies counts as signed; a present-but-invalid signature is recorded as \emph{forged}.
+Tampering with any covered field (adding an op, widening a scope, bumping a version) invalidates
+the signature. Every ambiguous path (no signature, unknown publisher, non-hex signature, crypto
+library unavailable) returns \texttt{verified = false}, so the auditor treats the tool as
+unsigned rather than guessing.
+
+\subsection{Risk: weighted for Compound exposure}
+Each tool's score is a sum of named weights over its declared capabilities and provenance. RCE-
+class ops (\texttt{exec}, \texttt{run\_command}, \texttt{write\_file}, and critically
+\texttt{sign\_tx}, since on a Compound-facing agent a compromised signer moves real value)
+carry the heaviest weight; network ops, unsigned provenance, an untrusted publisher, and
+over-broad scopes (four or more, or a wildcard) each add their own. A distinct \textbf{Compound
+position exposure} weight is added when a tool can build or sign a transaction or move
+collateral, because that is what sits directly in front of the money in a Comet position.
+Advisory hits from a source that must name its ID, origin, and retrieval time add further.
+Score bands map to \texttt{low/medium/high/critical}.
+
+\subsection{Pricing and counterfactuals}
+An underwriter pass converts the assessment into money. Per tool, a compromise probability
+$p$ is read from its severity band, floored at a higher value when a tool is both unsigned and
+RCE-capable (the dominant real-world failure), and the expected loss is $p \times$ a
+configurable breach-loss assumption. Summed and multiplied by a risk load, that is a suggested
+annual premium. The value of a fix is then \emph{measured}, not asserted: a counterfactual pass
+reruns the \emph{identical} \texttt{assess} $\rightarrow$ \texttt{price} pair over a mutated
+manifest --- the worst tool dropped, or re-published by a trusted publisher with its RCE/signing
+ops and wildcard scopes removed and \emph{genuinely re-signed} with that publisher's key --- and
+reports the premium delta. Because the mutated manifest passes the same Ed25519 verification as
+any other, the repricing is a real rerun of the scorer, not a hand-edited number.
+
+\subsection{The agent graph}
+An optional layer turns the audit into a ranked remediation plan. It is an
+ADK~\cite{adk} \texttt{SequentialAgent} that runs an Auditor sub-agent, then a Risk Lead
+sub-agent, in that fixed order; a run that did not write both output keys into session state is
+discarded rather than passed off as a plan. The order is enforced by the workflow agent, not
+requested in a prompt. The deterministic audit is the whole security and pricing claim and runs
+without any cloud credentials; the LLM layer only adds narrative on top of numbers the code
+already produced.
+
+\section{Implementation and evaluation}
+Provenance verification uses a standard Ed25519 implementation~\cite{ed25519}; everything else
+--- inventory, scoring, pricing, counterfactuals --- is dependency-light Python that is a pure
+function of its inputs. The static UI (\texttt{auditpledge/ui/index.html}) carries no
+hand-written numbers: every figure is captured from one real audit run and pasted between
+snapshot markers, and a snapshot test re-runs the audit and fails if any value drifts.
+
+We evaluate by test with pytest:
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{75 Python tests} (\texttt{PYTHONPATH=. pytest -q}, Python 3.10+, the audit store
+forced in-memory). They pin each defence: the Ed25519 verification and its tamper cases,
+exact-publisher matching, the unsigned-RCE pricing floor, the counterfactual repricing, the
+advisory-ID validation (a placeholder such as \texttt{GHSA-xxxx-xxxx-xxxx} is refused rather
+than printed as a known vuln), the fail-closed MCP paths against a real stdio subprocess
+(handshake, \texttt{tools/list}, identity mismatch, missing evidence, unreachable server), the
+agent-graph ordering, and the UI snapshot. No network, key, or cloud credential is needed.
+\end{itemize}
+
+The sharpest case is the hostile manifest \texttt{evil-lookalike}: a tool that claims the
+\texttt{compound-finance} publisher with a bare-string ``signature'' and a lookalike
+\texttt{attacker.compound-finance} entry. The auditor recovers no trust from either: the first
+is recorded as forged, the second fails the exact-publisher match, and both are scored as
+unsigned. That pins the property that self-asserted provenance is not trust.
+
+\section{Limitations}\label{sec:limits}
+This is milestone 1, and the honest scope is narrow (the full map is in
+\texttt{docs/HONESTY.md}).
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{No mainnet, no users, no revenue.} All Web3 interaction is testnet and seeded
+only; nothing is on Compound mainnet.
+\item \textbf{No third-party MCP server has been audited by us.} AuditPledge demonstrates both
+ends against its own synthetic catalogue. A real third-party tool does not yet publish
+provenance evidence, which is exactly what the milestone roadmap delivers; against such a tool
+the auditor fails closed rather than inventing a verdict.
+\item \textbf{The pricing inputs are illustrative priors, not an actuarial model.} The
+per-severity probabilities, the unsigned-RCE floor, the breach-loss figure, and the risk load
+are defensible, runtime-configurable starting points. What is demonstrated is the mechanism: a
+manifest becomes a reproducible number and a fix changes it by a measured amount.
+\item \textbf{No audit, partnership, or endorsement} from Compound or anyone else. This is a
+grant application.
+\end{itemize}
+
+\section{Conclusion}
+AuditPledge turns ``which of my Compound agent's tools are dangerous, how dangerous, and in
+money'' into a reproducible, provenance-checked, priced answer that fails closed on every
+ambiguous path. The counterfactual makes the value of a fix a measured saving rather than a
+claim, and the UI cannot show a number the auditor did not produce. The durable contribution is
+a provenance-and-pricing discipline for the MCP tool supply chain that Compound-facing agents
+depend on, established before an incident forces it.
+
+\begin{thebibliography}{9}
+\bibitem{mcp} Anthropic. \emph{Model Context Protocol Specification}. \url{https://modelcontextprotocol.io/}, 2024--2026.
+\bibitem{comet} Compound Labs. \emph{Compound III (Comet) Documentation}. \url{https://docs.compound.finance/}, 2023--2026.
+\bibitem{compgov} Compound Governance Forum. \url{https://www.comp.xyz/}, 2026.
+\bibitem{ed25519} D.~J. Bernstein et al. \emph{High-speed high-security signatures (Ed25519)}. Journal of Cryptographic Engineering, 2012.
+\bibitem{osv} Open Source Vulnerabilities (OSV). \emph{OSV.dev distributed vulnerability database}. \url{https://osv.dev/}, 2021--2026.
+\bibitem{adk} Google. \emph{Agent Development Kit: Workflow Agents (SequentialAgent)}. \url{https://google.github.io/adk-docs/}, 2025--2026.
+\end{thebibliography}
+
+\end{document}
